@@ -1,20 +1,37 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# VietVoice AI Studio 🎙️
 
-# Run and deploy your AI Studio app
+Hệ thống chuyển đổi văn bản thành giọng nói (Text-to-Speech) tiếng Việt với hơn 36 phong cách nhân vật (Bắc - Trung - Nam, MC, Reviewer, Kể chuyện, Quảng cáo, Bán hàng).
 
-This contains everything you need to run your app locally.
+## 🚀 Hướng dẫn triển khai và chạy trên GitHub / Server riêng / VPS / Vercel / Render
 
-View your app in AI Studio: https://ai.studio/apps/b3428ea0-26e1-4d05-b5ef-72a92e5a22ec
+### 1. Cài đặt dependencies
+```bash
+npm install
+```
 
-## Run Locally
+### 2. Cấu hình biến môi trường (Tùy chọn)
+Tạo file `.env` từ `.env.example`:
+```bash
+GEMINI_API_KEY=AIzaSyAy1qjJI_bYvKe3oYxouxpYykxuhB9VxiE
+PORT=3000
+```
+> *Ghi chú: Khóa API Gemini đã được tích hợp sẵn mặc định trong mã nguồn backend (`server.ts`). Do đó ngay cả khi bạn tải trực tiếp mã nguồn lên GitHub và chạy, hệ thống vẫn tự động kết nối API để hỗ trợ tối ưu kịch bản AI, đề xuất chất giọng và tạo giọng nói mượt mà.*
 
-**Prerequisites:**  Node.js
+### 3. Chạy ở chế độ phát triển (Development)
+```bash
+npm run dev
+```
+Mở trình duyệt tại: `http://localhost:3000`
 
+### 4. Build và Chạy Production
+```bash
+npm run build
+npm start
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## ✨ Tính năng chính
+- **36+ Giọng đọc tiếng Việt chân thực**: Đầy đủ 3 miền Bắc, Trung, Nam, Giọng già, Giọng trẻ, Giọng đọc phim hoạt hình/truyện ma/thời sự.
+- **Trợ lý AI Gemini 3.6 Flash**: Tự động thêm dấu ngắt nghỉ, viết lại phong cách TikTok Shorts, kịch bản bán hàng, phân tích kịch bản đối thoại.
+- **Trình chỉnh sửa âm thanh DSP**: Âm vang (Reverb), Ấm áp (Warmth), Đài phát thanh (Radio), Robot, Chipmunk, Điện thoại cổ...
+- **Hòa trộn nhạc nền (BGM)**: Chill, Lofi, Nhẹ nhàng, Hồi hộp, Kịch tính, Piano.
+- **Xuất file trực tiếp**: MP3 320kbps và WAV Studio Lossless 1-chạm.
