@@ -37,6 +37,107 @@ async function startServer() {
     });
   });
 
+  // Helper to split long Vietnamese text into safe TTS chunks
+  function splitTextIntoTTSChunks(text: string, maxChunkLen: number = 140): string[] {
+    const cleanText = text.trim();
+    if (!cleanText) return [];
+
+    // Split by major sentence delimiters
+    const sentences = cleanText.split(/([.\n!?;]+)/);
+    const combinedSentences: string[] = [];
+
+    for (let i = 0; i < sentences.length; i += 2) {
+      const sentence = (sentences[i] || "") + (sentences[i + 1] || "");
+      if (sentence.trim()) {
+        combinedSentences.push(sentence.trim());
+      }
+    }
+
+    const chunks: string[] = [];
+    let currentChunk = "";
+
+    for (const sent of combinedSentences) {
+      if (sent.length > maxChunkLen) {
+        // Subsplit long sentences by comma or space
+        const words = sent.split(/([,，\s]+)/);
+        for (const w of words) {
+          if ((currentChunk + w).length > maxChunkLen && currentChunk.trim()) {
+            chunks.push(currentChunk.trim());
+            currentChunk = w;
+          } else {
+            currentChunk += w;
+          }
+        }
+      } else {
+        if ((currentChunk + " " + sent).length > maxChunkLen && currentChunk.trim()) {
+          chunks.push(currentChunk.trim());
+          currentChunk = sent;
+        } else {
+          currentChunk = currentChunk ? currentChunk + " " + sent : sent;
+        }
+      }
+    }
+
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks.length > 0 ? chunks : [cleanText.substring(0, maxChunkLen)];
+  }
+
+  // API Route: Vietnamese High-Fidelity TTS Synthesis
+  app.post("/api/tts/synthesize", async (req, res) => {
+    try {
+      const { text, speed = 1.0, pitch = 1.0 } = req.body;
+      if (!text || typeof text !== "string" || !text.trim()) {
+        return res.status(400).json({ error: "Văn bản không được để trống" });
+      }
+
+      const chunks = splitTextIntoTTSChunks(text, 140);
+      const audioBuffers: Buffer[] = [];
+
+      for (const chunk of chunks) {
+        if (!chunk.trim()) continue;
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(
+          chunk.trim()
+        )}&tl=vi&client=tw-ob`;
+
+        const response = await fetch(ttsUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Referer: "https://translate.google.com/",
+          },
+        });
+
+        if (!response.ok) {
+          console.warn(`TTS fetch failed for chunk: "${chunk}", status: ${response.status}`);
+          continue;
+        }
+
+        const arrayBuf = await response.arrayBuffer();
+        audioBuffers.push(Buffer.from(arrayBuf));
+      }
+
+      if (audioBuffers.length === 0) {
+        return res.status(500).json({ error: "Không thể tạo âm thanh từ văn bản này" });
+      }
+
+      const mergedAudio = Buffer.concat(audioBuffers);
+      const audioBase64 = mergedAudio.toString("base64");
+
+      return res.json({
+        audioBase64,
+        format: "mp3",
+        sizeBytes: mergedAudio.length,
+        chunkCount: audioBuffers.length,
+      });
+    } catch (error: any) {
+      console.error("Lỗi API TTS Synthesize:", error);
+      return res.status(500).json({ error: error.message || "Lỗi tạo giọng nói" });
+    }
+  });
+
   // API Route: Enhance & Optimize Vietnamese Script for TTS
   app.post("/api/ai/enhance-script", async (req, res) => {
     try {

@@ -7,22 +7,29 @@ import {
   Trash2,
   Clock,
   Flame,
-  Radio,
   ShoppingBag,
-  Moon,
-  Tv,
-  HelpCircle,
   Loader2,
   Check,
+  Download,
+  CheckCircle2,
+  Play,
+  Pause,
 } from "lucide-react";
 import { SAMPLE_SCRIPTS, SampleScript } from "../data/sampleScripts";
-import { VoiceCharacter } from "../types";
+import { GeneratedAudioItem } from "../types";
+import { downloadAudioItem } from "../utils/downloadHelper";
 
 interface ScriptEditorProps {
   text: string;
   onChangeText: (text: string) => void;
   onApplyVoice: (voiceId: string) => void;
   speed: number;
+  onGenerate?: () => void;
+  isGenerating?: boolean;
+  canGenerate?: boolean;
+  currentAudio?: GeneratedAudioItem | null;
+  isPlaying?: boolean;
+  onTogglePlay?: () => void;
 }
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -30,10 +37,17 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   onChangeText,
   onApplyVoice,
   speed,
+  onGenerate,
+  isGenerating = false,
+  canGenerate = true,
+  currentAudio = null,
+  isPlaying = false,
+  onTogglePlay,
 }) => {
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [enhancementType, setEnhancementType] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<{
     voiceId: string;
     genre: string;
@@ -44,7 +58,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const charCount = text.length;
 
   // Calculate estimated reading time in seconds (average 3.5 words/sec in VN)
-  const estimatedSeconds = Math.max(1, Math.round((wordCount / (3.5 * speed))));
+  const estimatedSeconds = Math.max(1, Math.round(wordCount / (3.5 * speed)));
   const minutes = Math.floor(estimatedSeconds / 60);
   const seconds = estimatedSeconds % 60;
   const timeFormatted =
@@ -61,18 +75,19 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     if (!text.trim()) return;
     setIsEnhancing(true);
     setEnhancementType(mode);
+
     try {
-      const response = await fetch("/api/ai/enhance-script", {
+      const res = await fetch("/api/ai/enhance-script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, mode }),
+        body: JSON.stringify({ script: text, mode }),
       });
-      const data = await response.json();
-      if (data.enhancedText) {
-        onChangeText(data.enhancedText);
+      const data = await res.json();
+      if (data.enhancedScript) {
+        onChangeText(data.enhancedScript);
       }
-    } catch (error) {
-      console.error("Lỗi enhance script:", error);
+    } catch (e) {
+      console.error("Lỗi cải thiện kịch bản:", e);
     } finally {
       setIsEnhancing(false);
       setEnhancementType(null);
@@ -83,23 +98,24 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     if (!text.trim()) return;
     setIsEnhancing(true);
     setEnhancementType("suggest");
+
     try {
-      const response = await fetch("/api/ai/suggest-voice", {
+      const res = await fetch("/api/ai/suggest-voice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ script: text }),
       });
-      const data = await response.json();
-      if (data.voiceId) {
+      const data = await res.json();
+      if (data.suggestedVoiceId) {
+        onApplyVoice(data.suggestedVoiceId);
         setAiSuggestion({
-          voiceId: data.voiceId,
-          genre: data.genre || "Phù hợp nội dung",
-          reason: data.reason || "Giọng đọc tối ưu cho văn bản này",
+          voiceId: data.suggestedVoiceId,
+          genre: data.genre || "Nội dung số",
+          reason: data.reason || "Giọng đọc rất phù hợp với ngữ cảnh kịch bản này.",
         });
-        onApplyVoice(data.voiceId);
       }
-    } catch (error) {
-      console.error("Lỗi suggest voice:", error);
+    } catch (e) {
+      console.error("Lỗi gợi ý giọng đọc:", e);
     } finally {
       setIsEnhancing(false);
       setEnhancementType(null);
@@ -112,41 +128,52 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handlePlayPauseClick = () => {
+    if (onTogglePlay) {
+      onTogglePlay();
+    } else if (onGenerate && canGenerate) {
+      onGenerate();
+    }
+  };
+
+  const handleDownloadClick = async (format: "mp3" | "wav" = "mp3") => {
+    if (currentAudio) {
+      await downloadAudioItem(currentAudio, format);
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 2000);
+    } else if (onGenerate && canGenerate) {
+      onGenerate();
+    }
+  };
+
   return (
-    <div className="bg-slate-900/70 backdrop-blur-md rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-xl flex flex-col gap-4">
-      {/* Editor Header */}
+    <div className="bg-slate-900/80 rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-xl flex flex-col gap-4">
+      {/* Header & Quick Sample Templates */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-purple-400" />
-          <h2 className="text-lg font-bold text-white">Văn Bản Cần Đọc</h2>
-          <span className="text-[11px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">
-            Không giới hạn từ
-          </span>
+          <FileText className="w-5 h-5 text-indigo-400" />
+          <h2 className="font-bold text-base text-white">Nội Dung Văn Bản / Kịch Bản</h2>
         </div>
 
-        {/* Quick Sample Selector */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-          <span className="text-xs text-slate-400 shrink-0 font-medium">
-            Kịch bản mẫu:
-          </span>
-          {SAMPLE_SCRIPTS.slice(0, 4).map((sample) => (
+        {/* Sample Templates Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
+          <span className="text-xs text-slate-400 shrink-0 mr-1 font-medium">Mẫu:</span>
+          {SAMPLE_SCRIPTS.slice(0, 5).map((sample) => (
             <button
               key={sample.id}
-              id={`btn-sample-${sample.id}`}
               onClick={() => handleSelectSample(sample)}
-              className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors shrink-0 flex items-center gap-1"
+              className="px-2.5 py-1 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors shrink-0 whitespace-nowrap cursor-pointer"
             >
-              <span>{sample.icon}</span>
-              <span>{sample.title}</span>
+              {sample.title}
             </button>
           ))}
         </div>
       </div>
 
-      {/* AI Assistance Action Bar */}
-      <div className="bg-slate-950/60 rounded-xl p-2.5 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs text-indigo-300 font-medium">
-          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 animate-pulse" />
+      {/* AI Script Toolbar */}
+      <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs text-purple-300 font-semibold px-1">
+          <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
           <span>Trợ Lý AI Kịch Bản:</span>
         </div>
 
@@ -155,7 +182,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             id="btn-ai-punctuation"
             disabled={isEnhancing || !text.trim()}
             onClick={() => handleEnhanceScript("punctuations")}
-            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-indigo-600 disabled:opacity-50 text-slate-200 hover:text-white border border-slate-700 transition-colors flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-indigo-600 disabled:opacity-50 text-slate-200 hover:text-white border border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
             title="Thêm dấu phẩy, chấm, ngắt nghỉ mượt mà và sửa lỗi viết tắt"
           >
             {isEnhancing && enhancementType === "punctuations" ? (
@@ -170,7 +197,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             id="btn-ai-tiktok"
             disabled={isEnhancing || !text.trim()}
             onClick={() => handleEnhanceScript("tiktok")}
-            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-pink-600 disabled:opacity-50 text-slate-200 hover:text-white border border-slate-700 transition-colors flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-pink-600 disabled:opacity-50 text-slate-200 hover:text-white border border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
             title="Viết lại theo phong cách TikTok Shorts giật tít 3s đầu"
           >
             {isEnhancing && enhancementType === "tiktok" ? (
@@ -185,7 +212,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             id="btn-ai-sales"
             disabled={isEnhancing || !text.trim()}
             onClick={() => handleEnhanceScript("sales")}
-            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-amber-600 disabled:opacity-50 text-slate-200 hover:text-white border border-slate-700 transition-colors flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-amber-600 disabled:opacity-50 text-slate-200 hover:text-white border border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
             title="Biến đổi thành kịch bản bán hàng chốt đơn cuốn hút"
           >
             {isEnhancing && enhancementType === "sales" ? (
@@ -200,7 +227,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             id="btn-ai-suggest-voice"
             disabled={isEnhancing || !text.trim()}
             onClick={handleSuggestVoice}
-            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white shadow-sm transition-all flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white shadow-sm transition-all flex items-center gap-1 cursor-pointer"
             title="AI tự động phân tích và chọn giọng nhân vật phù hợp nhất"
           >
             {isEnhancing && enhancementType === "suggest" ? (
@@ -224,7 +251,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           </div>
           <button
             onClick={() => setAiSuggestion(null)}
-            className="text-emerald-400 hover:text-emerald-200 text-xs underline"
+            className="text-emerald-400 hover:text-emerald-200 text-xs underline cursor-pointer"
           >
             Đóng
           </button>
@@ -247,7 +274,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             id="btn-copy-script"
             onClick={handleCopy}
             disabled={!text.trim()}
-            className="p-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shadow-md transition-colors"
+            className="p-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 shadow-md transition-colors cursor-pointer disabled:opacity-50"
             title="Sao chép văn bản"
           >
             {copied ? (
@@ -260,7 +287,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
             id="btn-clear-script"
             onClick={() => onChangeText("")}
             disabled={!text.trim()}
-            className="p-2 rounded-lg bg-slate-800/90 hover:bg-rose-900/80 text-slate-300 hover:text-rose-200 border border-slate-700 shadow-md transition-colors"
+            className="p-2 rounded-lg bg-slate-800/90 hover:bg-rose-900/80 text-slate-300 hover:text-rose-200 border border-slate-700 shadow-md transition-colors cursor-pointer disabled:opacity-50"
             title="Xóa nội dung"
           >
             <Trash2 className="w-4 h-4" />
@@ -268,9 +295,9 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
         </div>
       </div>
 
-      {/* Statistics Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 pt-1 border-t border-slate-800/60">
-        <div className="flex items-center gap-4">
+      {/* Statistics Bar & Direct Action Buttons (Placed right next to Ước tính thời lượng đọc) */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+        <div className="flex items-center gap-4 text-xs text-slate-400">
           <span>
             Số từ: <strong className="text-slate-200">{wordCount}</strong>
           </span>
@@ -279,12 +306,100 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-indigo-300 font-medium">
-          <Clock className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Ước tính thời lượng đọc: </span>
-          <strong className="text-white bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/50">
-            {timeFormatted}
-          </strong>
+        {/* Action Controls Group: Ước tính thời lượng đọc + Bắt Đầu Tạo + Tạm Dừng / Phát + Tải File */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Estimated Reading Time Display */}
+          <div className="flex items-center gap-1.5 text-xs text-indigo-300 font-medium bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-indigo-500/30 shadow-inner">
+            <Clock className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span>Ước tính thời lượng đọc:</span>
+            <strong className="text-white font-bold text-xs bg-indigo-900/70 px-2 py-0.5 rounded border border-indigo-700/50">
+              {timeFormatted}
+            </strong>
+          </div>
+
+          {/* Nút Bắt Đầu Tạo */}
+          <button
+            id="btn-script-start-create"
+            disabled={isGenerating || !text.trim()}
+            onClick={onGenerate}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 hover:from-rose-400 hover:to-indigo-500 disabled:opacity-50 text-white shadow-md shadow-purple-600/25 hover:shadow-purple-600/40 transition-all flex items-center gap-1.5 cursor-pointer transform active:scale-95 whitespace-nowrap"
+            title="Bắt đầu tạo giọng nói từ văn bản này"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Đang Tạo...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
+                <span>Bắt Đầu Tạo</span>
+              </>
+            )}
+          </button>
+
+          {/* Nút Tạm Dừng Khi Đang Phát / Phát Tiếp */}
+          <button
+            id="btn-script-pause-play"
+            disabled={isGenerating || (!currentAudio && !text.trim())}
+            onClick={handlePlayPauseClick}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md transform active:scale-95 disabled:opacity-50 whitespace-nowrap ${
+              isPlaying
+                ? "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-amber-500/30 ring-2 ring-amber-400/50 animate-pulse"
+                : currentAudio
+                ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/25"
+                : "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700"
+            }`}
+            title={
+              isPlaying
+                ? "Tạm dừng phát âm thanh"
+                : currentAudio
+                ? "Tiếp tục phát âm thanh"
+                : "Tạo và phát thử"
+            }
+          >
+            {isPlaying ? (
+              <>
+                <Pause className="w-3.5 h-3.5 fill-current" />
+                <span>Tạm Dừng</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>{currentAudio ? "Phát Tiếp" : "Phát Thử"}</span>
+              </>
+            )}
+          </button>
+
+          {/* Nút Tải File Về Máy */}
+          <button
+            id="btn-script-download-file"
+            disabled={isGenerating || (!currentAudio && !text.trim())}
+            onClick={() => handleDownloadClick("mp3")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md transform active:scale-95 disabled:opacity-50 whitespace-nowrap ${
+              currentAudio
+                ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/25 hover:shadow-emerald-600/40"
+                : "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700"
+            }`}
+            title={
+              currentAudio
+                ? `Tải file ${currentAudio.format.toUpperCase()} về máy (${currentAudio.fileSizeKB} KB)`
+                : "Tạo và tải file về máy"
+            }
+          >
+            {downloadSuccess ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-emerald-300" />
+            )}
+            <span>
+              {downloadSuccess
+                ? "Đã Tải Về!"
+                : currentAudio
+                ? `Tải File Về Máy (${currentAudio.format.toUpperCase()})`
+                : "Tải File Về Máy"}
+            </span>
+          </button>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Play,
   Pause,
@@ -10,9 +10,10 @@ import {
   Share2,
   Check,
   FileAudio,
-  AudioWaveform,
+  CheckCircle,
 } from "lucide-react";
 import { GeneratedAudioItem } from "../types";
+import { downloadAudioItem } from "../utils/downloadHelper";
 
 interface AudioPlayerSectionProps {
   item: GeneratedAudioItem | null;
@@ -21,6 +22,9 @@ interface AudioPlayerSectionProps {
   progressStep: string;
   onGenerate: () => void;
   canGenerate: boolean;
+  isPlaying?: boolean;
+  onTogglePlay?: () => void;
+  audioRef?: React.RefObject<HTMLAudioElement | null>;
 }
 
 export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
@@ -30,47 +34,34 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
   progressStep,
   onGenerate,
   canGenerate,
+  isPlaying = false,
+  onTogglePlay,
+  audioRef,
 }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1.0);
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadSuccessFormat, setDownloadSuccessFormat] = useState<string | null>(null);
 
   useEffect(() => {
-    if (item && audioRef.current) {
-      audioRef.current.src = item.audioBlobUrl;
-      audioRef.current.load();
-      setIsPlaying(false);
+    if (item && audioRef?.current) {
       setCurrentTime(0);
-      // Auto play on generation completion
-      audioRef.current
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => {
-          // User interaction policy fallback
-        });
+      setDuration(item.duration || 0);
     }
-  }, [item]);
+  }, [item, audioRef]);
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play();
-      setIsPlaying(true);
+    if (onTogglePlay) {
+      onTogglePlay();
     }
   };
 
   const handleTimeUpdate = () => {
-    if (audioRef.current) {
+    if (audioRef?.current) {
       setCurrentTime(audioRef.current.currentTime);
       setDuration(audioRef.current.duration || item?.duration || 0);
     }
@@ -78,16 +69,9 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
-    if (audioRef.current) {
+    if (audioRef?.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
-    }
-  };
-
-  const handleEnded = () => {
-    if (!isLooping) {
-      setIsPlaying(false);
-      setCurrentTime(0);
     }
   };
 
@@ -98,15 +82,24 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
     return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
   };
 
-  const handleDownload = (format: "mp3" | "wav") => {
-    if (!item) return;
-    const a = document.createElement("a");
-    a.href = item.audioBlobUrl;
-    const cleanTitle = item.title.replace(/[^a-zA-Z0-9_À-ỹ]/g, "_").substring(0, 30);
-    a.download = `${cleanTitle || "VietVoice"}_${item.voiceName}_${Date.now()}.${format}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownload = async (targetFormat: "mp3" | "wav") => {
+    if (!item) {
+      if (canGenerate) {
+        onGenerate();
+      }
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      await downloadAudioItem(item, targetFormat);
+      setDownloadSuccessFormat(targetFormat);
+      setTimeout(() => setDownloadSuccessFormat(null), 2500);
+    } catch (err) {
+      console.error("Lỗi khi tải file:", err);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleCopyShare = () => {
@@ -117,12 +110,12 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
 
   return (
     <div className="bg-gradient-to-br from-slate-900 via-indigo-950/70 to-slate-900 rounded-2xl p-4 sm:p-6 border border-indigo-500/30 shadow-2xl flex flex-col gap-5">
-      <audio
-        ref={audioRef}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleEnded}
-        loop={isLooping}
-      />
+      {/* Hidden audio element event listeners if attached */}
+      {audioRef?.current && (
+        <div className="hidden" aria-hidden="true">
+          {/* Audio listeners handled via ref callbacks & events */}
+        </div>
+      )}
 
       {/* Generation Bar / CTA Button */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -147,7 +140,7 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
           id="btn-generate-speech"
           disabled={isGenerating || !canGenerate}
           onClick={onGenerate}
-          className="w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 hover:from-rose-400 hover:to-indigo-500 disabled:opacity-50 text-white shadow-xl shadow-purple-600/30 hover:shadow-purple-600/50 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2"
+          className="w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-500 via-purple-600 to-indigo-600 hover:from-rose-400 hover:to-indigo-500 disabled:opacity-50 text-white shadow-xl shadow-purple-600/30 hover:shadow-purple-600/50 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 cursor-pointer"
         >
           {isGenerating ? (
             <>
@@ -186,9 +179,9 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
           <div className="h-16 flex items-center justify-center gap-1 sm:gap-1.5 px-2 bg-slate-900/80 rounded-xl border border-slate-800/80 overflow-hidden">
             {Array.from({ length: 48 }).map((_, idx) => {
               const heightMultiplier = isPlaying
-                ? Math.abs(Math.sin((idx * 0.4) + currentTime * 5)) * 80 + 15
+                ? Math.abs(Math.sin(idx * 0.4 + (currentTime || 0) * 5)) * 80 + 15
                 : 15 + Math.sin(idx * 0.3) * 12;
-              const isPlayed = (idx / 48) <= (currentTime / (duration || 1));
+              const isPlayed = idx / 48 <= (currentTime || 0) / (duration || 1);
 
               return (
                 <div
@@ -229,7 +222,11 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
               <button
                 id="btn-player-play-pause"
                 onClick={togglePlay}
-                className="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30 transition-transform active:scale-95"
+                className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer ${
+                  isPlaying
+                    ? "bg-gradient-to-tr from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-amber-500/30"
+                    : "bg-gradient-to-tr from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-600/30"
+                }`}
                 title={isPlaying ? "Tạm dừng" : "Phát âm thanh"}
               >
                 {isPlaying ? (
@@ -241,8 +238,13 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
 
               <button
                 id="btn-player-loop"
-                onClick={() => setIsLooping(!isLooping)}
-                className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                onClick={() => {
+                  if (audioRef?.current) {
+                    audioRef.current.loop = !isLooping;
+                    setIsLooping(!isLooping);
+                  }
+                }}
+                className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                   isLooping
                     ? "bg-purple-950/80 border-purple-500 text-purple-300"
                     : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-400"
@@ -257,12 +259,12 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
               <div className="hidden sm:flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
                 <button
                   onClick={() => {
-                    if (audioRef.current) {
+                    if (audioRef?.current) {
                       audioRef.current.muted = !isMuted;
                       setIsMuted(!isMuted);
                     }
                   }}
-                  className="text-slate-400 hover:text-white"
+                  className="text-slate-400 hover:text-white cursor-pointer"
                 >
                   {isMuted ? (
                     <VolumeX className="w-4 h-4 text-rose-400" />
@@ -279,7 +281,7 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
                     setVolume(val);
-                    if (audioRef.current) {
+                    if (audioRef?.current) {
                       audioRef.current.volume = val;
                       audioRef.current.muted = false;
                       setIsMuted(false);
@@ -292,33 +294,47 @@ export const AudioPlayerSection: React.FC<AudioPlayerSectionProps> = ({
 
             {/* Fast Download Action Buttons */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Download MP3 */}
+              {/* Download MP3 Button */}
               <button
                 id="btn-download-mp3"
+                disabled={isDownloading}
                 onClick={() => handleDownload("mp3")}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-600/25 transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-600/25 transition-all transform hover:-translate-y-0.5 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 title="Tải file âm thanh định dạng MP3"
               >
-                <Download className="w-4 h-4" />
-                <span>Tải MP3 ({item.fileSizeKB} KB)</span>
+                {downloadSuccessFormat === "mp3" ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-200" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                <span>
+                  {downloadSuccessFormat === "mp3"
+                    ? "Đã tải MP3!"
+                    : `Tải MP3 (${item.fileSizeKB} KB)`}
+                </span>
               </button>
 
-              {/* Download WAV */}
+              {/* Download WAV Button */}
               <button
                 id="btn-download-wav"
+                disabled={isDownloading}
                 onClick={() => handleDownload("wav")}
-                className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 title="Tải file âm thanh định dạng WAV lossless"
               >
-                <FileAudio className="w-4 h-4 text-blue-400" />
-                <span>Tải WAV</span>
+                {downloadSuccessFormat === "wav" ? (
+                  <CheckCircle className="w-4 h-4 text-blue-300" />
+                ) : (
+                  <FileAudio className="w-4 h-4 text-blue-400" />
+                )}
+                <span>{downloadSuccessFormat === "wav" ? "Đã tải WAV!" : "Tải WAV"}</span>
               </button>
 
               {/* Share button */}
               <button
                 id="btn-share-audio"
                 onClick={handleCopyShare}
-                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
                 title="Sao chép link chia sẻ"
               >
                 {copiedLink ? (

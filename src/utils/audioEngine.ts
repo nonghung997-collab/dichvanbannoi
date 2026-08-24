@@ -51,7 +51,11 @@ export function findBestVoice(
 
   // 1. Direct match with Vietnamese lang (vi-VN, vi_VN, vi)
   const vietnameseVoices = allVoices.filter(
-    (v) => v.lang && (v.lang.startsWith("vi") || v.name.toLowerCase().includes("vietnam") || v.name.toLowerCase().includes("tiếng việt"))
+    (v) =>
+      v.lang &&
+      (v.lang.startsWith("vi") ||
+        v.name.toLowerCase().includes("vietnam") ||
+        v.name.toLowerCase().includes("tiếng việt"))
   );
 
   if (vietnameseVoices.length > 0) {
@@ -78,7 +82,7 @@ export function findBestVoice(
     return vietnameseVoices[0];
   }
 
-  // 2. Fallback to default or English voice
+  // 2. Fallback to default voice
   const defaultVoice = allVoices.find((v) => v.default) || allVoices[0];
   return defaultVoice || null;
 }
@@ -141,7 +145,10 @@ export function generateBgmBuffer(
       for (let i = 0; i < numSamples; i++) {
         const t = i / sampleRate;
         const sub = Math.sin(2 * Math.PI * 55 * t) * 0.2;
-        const pulse = (Math.sin(2 * Math.PI * 1.5 * t) > 0.8 ? 1 : 0) * Math.sin(2 * Math.PI * 110 * t) * 0.15;
+        const pulse =
+          (Math.sin(2 * Math.PI * 1.5 * t) > 0.8 ? 1 : 0) *
+          Math.sin(2 * Math.PI * 110 * t) *
+          0.15;
         const drone = Math.sin(2 * Math.PI * 164.81 * t) * 0.08;
         left[i] = (sub + pulse + drone) * 0.25;
         right[i] = (sub + pulse * 0.9 + drone * 1.1) * 0.25;
@@ -157,7 +164,10 @@ export function generateBgmBuffer(
         const stepPos = (i % stepLen) / stepLen;
         const freq = chords[stepIdx];
         const env = Math.exp(-stepPos * 8.0);
-        const pluck = (Math.sin((2 * Math.PI * freq * i) / sampleRate) + Math.sin((4 * Math.PI * freq * i) / sampleRate) * 0.5) * env;
+        const pluck =
+          (Math.sin((2 * Math.PI * freq * i) / sampleRate) +
+            Math.sin((4 * Math.PI * freq * i) / sampleRate) * 0.5) *
+          env;
         left[i] = pluck * 0.14;
         right[i] = pluck * 0.14;
       }
@@ -168,8 +178,10 @@ export function generateBgmBuffer(
       for (let i = 0; i < numSamples; i++) {
         const t = i / sampleRate;
         const pad1 = Math.sin(2 * Math.PI * (65.41 + Math.sin(t * 0.3) * 2) * t);
-        const pad2 = Math.sin(2 * Math.PI * (77.78 + Math.cos(t * 0.2) * 1.5) * t) * 0.7;
-        const shimmer = Math.sin(2 * Math.PI * 523.25 * t) * (0.02 + 0.02 * Math.sin(t * 2));
+        const pad2 =
+          Math.sin(2 * Math.PI * (77.78 + Math.cos(t * 0.2) * 1.5) * t) * 0.7;
+        const shimmer =
+          Math.sin(2 * Math.PI * 523.25 * t) * (0.02 + 0.02 * Math.sin(t * 2));
         const val = (pad1 + pad2) * 0.1 + shimmer;
         left[i] = val;
         right[i] = val * 0.95;
@@ -181,7 +193,6 @@ export function generateBgmBuffer(
       let lastOut = 0.0;
       for (let i = 0; i < numSamples; i++) {
         const white = Math.random() * 2 - 1;
-        // Pink noise approximation
         const pink = (lastOut + 0.02 * white) / 1.02;
         lastOut = pink;
         left[i] = pink * 0.12;
@@ -190,7 +201,6 @@ export function generateBgmBuffer(
       break;
     }
     default:
-      // Empty silence
       break;
   }
 
@@ -198,7 +208,7 @@ export function generateBgmBuffer(
 }
 
 /**
- * Applies DSP Audio Effects (Reverb, Robot, Radio, Bass Boost, ASMR, Horror, Telephone) to an AudioBuffer
+ * Applies DSP Audio Effects to an AudioBuffer
  */
 export async function applyAudioEffect(
   sourceBuffer: AudioBuffer,
@@ -210,9 +220,11 @@ export async function applyAudioEffect(
 
   const OfflineCtx =
     window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+  const extraTail =
+    effectType === "reverb" || effectType === "horror" ? sourceBuffer.sampleRate * 2 : 0;
   const offlineCtx = new OfflineCtx(
     sourceBuffer.numberOfChannels,
-    sourceBuffer.length + (effectType === "reverb" || effectType === "horror" ? 44100 * 2 : 0),
+    sourceBuffer.length + extraTail,
     sourceBuffer.sampleRate
   );
 
@@ -223,7 +235,6 @@ export async function applyAudioEffect(
 
   switch (effectType) {
     case "studio": {
-      // Compressor + subtle presence EQ
       const highBoost = offlineCtx.createBiquadFilter();
       highBoost.type = "highshelf";
       highBoost.frequency.value = 3500;
@@ -247,26 +258,22 @@ export async function applyAudioEffect(
       break;
     }
     case "reverb": {
-      // Algorithmic Convolver Reverb
       const convolver = offlineCtx.createConvolver();
-      const reverbRate = offlineCtx.sampleRate;
-      const reverbLength = reverbRate * 2.0;
-      const impulse = offlineCtx.createBuffer(2, reverbLength, reverbRate);
-      const leftImpulse = impulse.getChannelData(0);
-      const rightImpulse = impulse.getChannelData(1);
-      const decay = 2.5;
-
-      for (let i = 0; i < reverbLength; i++) {
-        const factor = Math.exp(-i / (reverbRate * decay));
-        leftImpulse[i] = (Math.random() * 2 - 1) * factor;
-        rightImpulse[i] = (Math.random() * 2 - 1) * factor;
+      const reverbLen = offlineCtx.sampleRate * 2.0;
+      const impulse = offlineCtx.createBuffer(2, reverbLen, offlineCtx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = impulse.getChannelData(ch);
+        for (let i = 0; i < reverbLen; i++) {
+          const decay = Math.exp((-i / reverbLen) * 3.5);
+          d[i] = (Math.random() * 2 - 1) * decay * 0.6;
+        }
       }
       convolver.buffer = impulse;
 
-      const dryGain = offlineCtx.createGain();
-      dryGain.gain.value = 0.7;
       const wetGain = offlineCtx.createGain();
-      wetGain.gain.value = 0.45;
+      wetGain.gain.value = 0.35;
+      const dryGain = offlineCtx.createGain();
+      dryGain.gain.value = 0.85;
 
       lastNode.connect(dryGain);
       lastNode.connect(convolver);
@@ -279,72 +286,65 @@ export async function applyAudioEffect(
       break;
     }
     case "radio": {
-      // Bandpass 300Hz - 3500Hz + gentle saturation
-      const bandpass = offlineCtx.createBiquadFilter();
-      bandpass.type = "bandpass";
-      bandpass.frequency.value = 1800;
-      bandpass.Q.value = 1.2;
+      const highpass = offlineCtx.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 450;
 
-      const waveShaper = offlineCtx.createWaveShaper();
-      const curve = new Float32Array(4096);
-      const k = 15;
-      for (let i = 0; i < 4096; i++) {
-        const x = (i * 2) / 4096 - 1;
-        curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
-      }
-      waveShaper.curve = curve;
+      const lowpass = offlineCtx.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 3200;
 
-      const gain = offlineCtx.createGain();
-      gain.gain.value = 1.8;
+      const midPeak = offlineCtx.createBiquadFilter();
+      midPeak.type = "peaking";
+      midPeak.frequency.value = 1500;
+      midPeak.gain.value = 6;
+      midPeak.Q.value = 2.0;
 
-      lastNode.connect(bandpass);
-      bandpass.connect(waveShaper);
-      waveShaper.connect(gain);
-      lastNode = gain;
+      lastNode.connect(highpass);
+      highpass.connect(lowpass);
+      lowpass.connect(midPeak);
+      lastNode = midPeak;
       break;
     }
     case "robot": {
-      // Ring modulation effect with high frequency oscillator simulation
-      const filter = offlineCtx.createBiquadFilter();
-      filter.type = "peaking";
-      filter.frequency.value = 450;
-      filter.gain.value = 12;
-      filter.Q.value = 6;
-
+      // Ring modulation / Metallic robotic filter
       const waveShaper = offlineCtx.createWaveShaper();
-      const curve = new Float32Array(1024);
-      for (let i = 0; i < 1024; i++) {
-        const x = (i * 2) / 1024 - 1;
-        curve[i] = Math.sin(x * Math.PI * 3.5);
+      const n_samples = 44100;
+      const curve = new Float32Array(n_samples);
+      const deg = Math.PI / 180;
+      for (let i = 0; i < n_samples; ++i) {
+        const x = (i * 2) / n_samples - 1;
+        curve[i] = ((3 + 20) * x * 20 * deg) / (Math.PI + 20 * Math.abs(x));
       }
       waveShaper.curve = curve;
 
-      const gain = offlineCtx.createGain();
-      gain.gain.value = 0.9;
+      const peakFilter = offlineCtx.createBiquadFilter();
+      peakFilter.type = "peaking";
+      peakFilter.frequency.value = 1000;
+      peakFilter.gain.value = 12;
+      peakFilter.Q.value = 8;
 
-      lastNode.connect(filter);
-      filter.connect(waveShaper);
-      waveShaper.connect(gain);
-      lastNode = gain;
+      lastNode.connect(peakFilter);
+      peakFilter.connect(waveShaper);
+      lastNode = waveShaper;
       break;
     }
     case "bassboost": {
-      const lowShelf = offlineCtx.createBiquadFilter();
-      lowShelf.type = "lowshelf";
-      lowShelf.frequency.value = 150;
-      lowShelf.gain.value = 9.0;
+      const bass = offlineCtx.createBiquadFilter();
+      bass.type = "lowshelf";
+      bass.frequency.value = 180;
+      bass.gain.value = 9.0;
 
       const comp = offlineCtx.createDynamicsCompressor();
       comp.threshold.value = -12;
       comp.ratio.value = 3;
 
-      lastNode.connect(lowShelf);
-      lowShelf.connect(comp);
+      lastNode.connect(bass);
+      bass.connect(comp);
       lastNode = comp;
       break;
     }
     case "asmr": {
-      // High-air boost + close compression
       const airBoost = offlineCtx.createBiquadFilter();
       airBoost.type = "highshelf";
       airBoost.frequency.value = 6000;
@@ -366,7 +366,6 @@ export async function applyAudioEffect(
       break;
     }
     case "horror": {
-      // Dark lowpass + echo delay
       const lowpass = offlineCtx.createBiquadFilter();
       lowpass.type = "lowpass";
       lowpass.frequency.value = 900;
@@ -455,7 +454,7 @@ export function mixSpeechAndBgm(
   const outL = mixed.getChannelData(0);
   const outR = mixed.getChannelData(1);
 
-  const normalizedBgmVol = (bgmVolume / 100) * 0.45; // Subtle music underneath voice
+  const normalizedBgmVol = (bgmVolume / 100) * 0.35; // Subtle music underneath voice
 
   for (let i = 0; i < totalLength; i++) {
     const sL = i < speechBuffer.length ? speechL[i] : 0;
@@ -473,9 +472,91 @@ export function mixSpeechAndBgm(
 }
 
 /**
- * Generates an AudioBuffer from text speech synthesis
+ * Convert Base64 string to ArrayBuffer in browser
  */
-export async function synthesizeTextToBuffer(
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+/**
+ * Synthesizes high quality Vietnamese speech via backend TTS API
+ */
+export async function fetchBackendTTSSpeech(
+  text: string,
+  character: VoiceCharacter,
+  settings: AudioSettings
+): Promise<AudioBuffer> {
+  const ctx = getAudioContext();
+
+  const response = await fetch("/api/tts/synthesize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      voiceId: character.id,
+      speed: settings.speed,
+      pitch: settings.pitch,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Server TTS API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.audioBase64) {
+    throw new Error("Không nhận được dữ liệu âm thanh");
+  }
+
+  const arrayBuffer = base64ToArrayBuffer(data.audioBase64);
+  const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+  // Apply speed / pitch transformation if character or settings specify custom speed/pitch
+  const effectiveSpeed = settings.speed * character.defaultSpeed;
+  const effectivePitch = settings.pitch * character.defaultPitch;
+
+  if (Math.abs(effectiveSpeed - 1.0) > 0.05 || Math.abs(effectivePitch - 1.0) > 0.05) {
+    const OfflineCtx =
+      window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+    const newLength = Math.max(1, Math.floor(decodedBuffer.length / effectiveSpeed));
+    const offCtx = new OfflineCtx(
+      decodedBuffer.numberOfChannels,
+      newLength,
+      decodedBuffer.sampleRate
+    );
+
+    const src = offCtx.createBufferSource();
+    src.buffer = decodedBuffer;
+    src.playbackRate.value = effectiveSpeed;
+
+    // Pitch shifting modulation via detune cents
+    if (Math.abs(effectivePitch - 1.0) > 0.05) {
+      src.detune.value = Math.log2(effectivePitch) * 1200;
+    }
+
+    const gainNode = offCtx.createGain();
+    gainNode.gain.value = settings.volume / 100;
+
+    src.connect(gainNode);
+    gainNode.connect(offCtx.destination);
+    src.start(0);
+
+    return await offCtx.startRendering();
+  }
+
+  return decodedBuffer;
+}
+
+/**
+ * Fallback Web Audio harmonic formant synthesizer
+ */
+export async function fallbackSynthesizeBuffer(
   text: string,
   character: VoiceCharacter,
   settings: AudioSettings,
@@ -484,16 +565,12 @@ export async function synthesizeTextToBuffer(
   const ctx = getAudioContext();
   const sampleRate = ctx.sampleRate;
 
-  // Approximate duration: average 3.8 words per second in Vietnamese
   const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
   const effectiveSpeed = settings.speed * character.defaultSpeed;
-  const baseSeconds = Math.max(1.8, (wordCount / 3.4) / effectiveSpeed);
+  const baseSeconds = Math.max(1.8, wordCount / 3.4 / effectiveSpeed);
   const totalSamples = Math.floor(sampleRate * (baseSeconds + 0.6));
 
-  // Determine character pitch base
   const effectivePitch = settings.pitch * character.defaultPitch;
-
-  // Base harmonic frequencies for Vietnamese formant synthesis
   const baseFreq =
     character.gender === "female"
       ? 240 * effectivePitch
@@ -501,12 +578,10 @@ export async function synthesizeTextToBuffer(
       ? 200 * effectivePitch
       : 130 * effectivePitch;
 
-  // Build audio buffer with natural acoustic modulation
   const buffer = ctx.createBuffer(2, totalSamples, sampleRate);
   const channelLeft = buffer.getChannelData(0);
   const channelRight = buffer.getChannelData(1);
 
-  // Generate harmonic speech envelope with natural prosody and phoneme rhythm
   const words = text.split(/\s+/).filter(Boolean);
   const samplesPerWord = totalSamples / Math.max(1, words.length);
 
@@ -516,30 +591,27 @@ export async function synthesizeTextToBuffer(
     const endSample = Math.floor(Math.min(totalSamples, (w + 1) * samplesPerWord));
     const wordLen = endSample - startSample;
 
-    // Vietnamese pitch inflection based on tone marks (ngã, hỏi, sắc, huyền, nặng)
     let pitchMod = 1.0;
-    if (/[áéíóúýắấếốớứ]/.test(word)) pitchMod = 1.14; // Sắc
-    else if (/[àèìòùỳằầềồờừ]/.test(word)) pitchMod = 0.88; // Huyền
-    else if (/[ảẻỉỏủỷẳẩểổởử]/.test(word)) pitchMod = 0.94; // Hỏi
-    else if (/[ãẽĩõũỹẵẫễỗỡữ]/.test(word)) pitchMod = 1.08; // Ngã
-    else if (/[ạẹịọụỵặậệộợự]/.test(word)) pitchMod = 0.82; // Nặng
+    if (/[áéíóúýắấếốớứ]/.test(word)) pitchMod = 1.14;
+    else if (/[àèìòùỳằầềồờừ]/.test(word)) pitchMod = 0.88;
+    else if (/[ảẻỉỏủỷẳẩểổởử]/.test(word)) pitchMod = 0.94;
+    else if (/[ãẽĩõũỹẵẫễỗỡữ]/.test(word)) pitchMod = 1.08;
+    else if (/[ạẹịọụỵặậệộợự]/.test(word)) pitchMod = 0.82;
 
     const curFreq = baseFreq * pitchMod;
 
     for (let i = startSample; i < endSample; i++) {
       const posInWord = (i - startSample) / Math.max(1, wordLen);
-      // Bell shaped envelope for word
       const env = Math.sin(posInWord * Math.PI) * Math.min(1, (1 - posInWord) * 4);
-
       const t = i / sampleRate;
-      // Formants
       const f0 = Math.sin(2 * Math.PI * curFreq * t);
       const f1 = Math.sin(2 * Math.PI * curFreq * 2.1 * t) * 0.45;
       const f2 = Math.sin(2 * Math.PI * curFreq * 3.4 * t) * 0.25;
       const f3 = Math.sin(2 * Math.PI * curFreq * 4.8 * t) * 0.12;
       const breath = (Math.random() * 2 - 1) * 0.04;
 
-      const sampleVal = (f0 + f1 + f2 + f3 + breath) * env * 0.4 * (settings.volume / 100);
+      const sampleVal =
+        (f0 + f1 + f2 + f3 + breath) * env * 0.4 * (settings.volume / 100);
 
       channelLeft[i] = sampleVal;
       channelRight[i] = sampleVal * 0.98;
@@ -547,22 +619,6 @@ export async function synthesizeTextToBuffer(
 
     if (onProgress && w % 3 === 0) {
       onProgress(Math.floor((w / words.length) * 60));
-    }
-  }
-
-  // Also play native SpeechSynthesis simultaneously if supported for ultra-crisp phonetic audio
-  if (typeof window !== "undefined" && "speechSynthesis" in window) {
-    try {
-      const allVoices = await getBrowserVoices();
-      const matchedVoice = findBestVoice(character, allVoices);
-      const utterance = new SpeechSynthesisUtterance(text);
-      if (matchedVoice) utterance.voice = matchedVoice;
-      utterance.rate = Math.min(2.0, Math.max(0.5, effectiveSpeed));
-      utterance.pitch = Math.min(2.0, Math.max(0.5, effectivePitch));
-      utterance.volume = settings.volume / 100;
-      utterance.lang = "vi-VN";
-    } catch {
-      // Ignore background synthesis fallback errors
     }
   }
 
@@ -584,17 +640,24 @@ export async function renderAndExportAudio(
   fileSizeKB: number;
   format: "mp3" | "wav";
 }> {
-  onProgress?.(15, "Đang xử lý ngữ điệu và phát âm tiếng Việt...");
-  const rawSpeechBuffer = await synthesizeTextToBuffer(
-    text,
-    character,
-    settings,
-    (pct) => onProgress?.(15 + pct * 0.4, "Đang tổng hợp âm phổ nhân vật...")
-  );
+  onProgress?.(20, "Đang xử lý ngữ điệu và phát âm chuẩn tiếng Việt...");
 
-  onProgress?.(60, "Đang áp dụng bộ lọc âm thanh DSP...");
-  const effectiveEffect = settings.effect !== "none" ? settings.effect : character.effect || "none";
-  const processedSpeechBuffer = await applyAudioEffect(rawSpeechBuffer, effectiveEffect);
+  let rawSpeechBuffer: AudioBuffer;
+  try {
+    rawSpeechBuffer = await fetchBackendTTSSpeech(text, character, settings);
+  } catch (err) {
+    console.warn("Backend TTS failed, using fallback engine:", err);
+    onProgress?.(35, "Đang tổng hợp âm phổ nhân vật...");
+    rawSpeechBuffer = await fallbackSynthesizeBuffer(text, character, settings);
+  }
+
+  onProgress?.(60, "Đang áp dụng bộ lọc âm thanh DSP Studio...");
+  const effectiveEffect =
+    settings.effect !== "none" ? settings.effect : character.effect || "none";
+  const processedSpeechBuffer = await applyAudioEffect(
+    rawSpeechBuffer,
+    effectiveEffect
+  );
 
   onProgress?.(80, "Đang hòa trộn nhạc nền (BGM)...");
   const ctx = getAudioContext();
@@ -602,7 +665,11 @@ export async function renderAndExportAudio(
   if (settings.bgmId && settings.bgmId !== "none") {
     const bgmTrack = BGM_TRACKS.find((b) => b.id === settings.bgmId);
     if (bgmTrack) {
-      bgmBuffer = generateBgmBuffer(ctx, bgmTrack.synthPreset, processedSpeechBuffer.duration);
+      bgmBuffer = generateBgmBuffer(
+        ctx,
+        bgmTrack.synthPreset,
+        processedSpeechBuffer.duration
+      );
     }
   }
 
@@ -622,7 +689,7 @@ export async function renderAndExportAudio(
   }
 
   const blobUrl = URL.createObjectURL(exportBlob);
-  const fileSizeKB = Math.round(exportBlob.size / 1024);
+  const fileSizeKB = Math.max(1, Math.round(exportBlob.size / 1024));
 
   onProgress?.(100, "Hoàn tất tạo giọng nói!");
 
@@ -638,18 +705,41 @@ export async function renderAndExportAudio(
 /**
  * Preview a short sample of the character voice
  */
-export function playVoicePreview(character: VoiceCharacter): void {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+export async function playVoicePreview(character: VoiceCharacter): Promise<void> {
+  const sampleText = character.sampleText || `Xin chào, tôi là ${character.name}.`;
 
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(character.sampleText);
-  utterance.rate = character.defaultSpeed;
-  utterance.pitch = character.defaultPitch;
-  utterance.lang = "vi-VN";
+  try {
+    const previewSettings: AudioSettings = {
+      voiceId: character.id,
+      speed: character.defaultSpeed || 1.0,
+      pitch: character.defaultPitch || 1.0,
+      volume: 100,
+      effect: character.effect || "none",
+      bgmId: "none",
+      bgmVolume: 0,
+      exportFormat: "mp3",
+    };
 
-  getBrowserVoices().then((voices) => {
-    const matched = findBestVoice(character, voices);
-    if (matched) utterance.voice = matched;
-    window.speechSynthesis.speak(utterance);
-  });
+    const buffer = await fetchBackendTTSSpeech(sampleText, character, previewSettings);
+    const ctx = getAudioContext();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  } catch {
+    // Fallback to browser speech synthesis
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(sampleText);
+      utterance.rate = character.defaultSpeed || 1.0;
+      utterance.pitch = character.defaultPitch || 1.0;
+      utterance.lang = "vi-VN";
+
+      getBrowserVoices().then((voices) => {
+        const matched = findBestVoice(character, voices);
+        if (matched) utterance.voice = matched;
+        window.speechSynthesis.speak(utterance);
+      });
+    }
+  }
 }

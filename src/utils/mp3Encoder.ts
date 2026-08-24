@@ -1,7 +1,4 @@
-// @ts-ignore
-import * as lamejsModule from "lamejs";
-
-const lamejs = (lamejsModule as any).default || lamejsModule;
+import { Mp3Encoder } from "@breezystack/lamejs";
 
 /**
  * Converts Float32Array AudioBuffer channels into Int16Array PCM
@@ -16,12 +13,12 @@ function floatTo16BitPCM(input: Float32Array): Int16Array {
 }
 
 /**
- * Encodes an AudioBuffer into an MP3 Blob using lamejs
+ * Encodes an AudioBuffer into an MP3 Blob using modern @breezystack/lamejs
  */
 export function audioBufferToMp3Blob(audioBuffer: AudioBuffer, bitrate: number = 192): Blob {
   const channels = Math.min(audioBuffer.numberOfChannels, 2);
   const sampleRate = audioBuffer.sampleRate;
-  const mp3Encoder = new lamejs.Mp3Encoder(channels, sampleRate, bitrate);
+  const mp3Encoder = new Mp3Encoder(channels, sampleRate, bitrate);
   const mp3Data: Uint8Array[] = [];
 
   const leftChannel = floatTo16BitPCM(audioBuffer.getChannelData(0));
@@ -33,7 +30,7 @@ export function audioBufferToMp3Blob(audioBuffer: AudioBuffer, bitrate: number =
 
   for (let i = 0; i < totalSamples; i += sampleBlockSize) {
     const leftChunk = leftChannel.subarray(i, i + sampleBlockSize);
-    let mp3buf: Int8Array;
+    let mp3buf: any;
 
     if (channels === 2) {
       const rightChunk = rightChannel.subarray(i, i + sampleBlockSize);
@@ -42,14 +39,14 @@ export function audioBufferToMp3Blob(audioBuffer: AudioBuffer, bitrate: number =
       mp3buf = mp3Encoder.encodeBuffer(leftChunk);
     }
 
-    if (mp3buf.length > 0) {
+    if (mp3buf && mp3buf.length > 0) {
       mp3Data.push(new Uint8Array(mp3buf));
     }
   }
 
   const mp3Flush = mp3Encoder.flush();
-  if (mp3Flush.length > 0) {
-    mp3Data.push(new Uint8Array(mp3Flush));
+  if (mp3Flush && (mp3Flush as any).length > 0) {
+    mp3Data.push(new Uint8Array(mp3Flush as any));
   }
 
   return new Blob(mp3Data as BlobPart[], { type: "audio/mp3" });
