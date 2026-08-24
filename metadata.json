@@ -1,0 +1,6 @@
+{
+  "name": "VietVoice AI - Tạo Giọng Nói Từ Văn Bản",
+  "description": "Ứng dụng chuyển đổi văn bản thành giọng nói hơn 36 giọng Tiếng Việt và nhân vật AI miễn phí, hỗ trợ xuất file MP3 và WAV chất lượng phòng thu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
