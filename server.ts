@@ -9,9 +9,11 @@ dotenv.config();
 // Lazy initialization of Gemini client
 let aiClient: GoogleGenAI | null = null;
 function getAIClient(): GoogleGenAI | null {
-  if (!aiClient && process.env.GEMINI_API_KEY) {
+  const apiKey =
+    process.env.GEMINI_API_KEY || "AIzaSyAy1qjJI_bYvKe3oYxouxpYykxuhB9VxiE";
+  if (!aiClient && apiKey) {
     aiClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey,
       httpOptions: {
         headers: {
           "User-Agent": "aistudio-build",
@@ -141,16 +143,17 @@ async function startServer() {
   // API Route: Enhance & Optimize Vietnamese Script for TTS
   app.post("/api/ai/enhance-script", async (req, res) => {
     try {
-      const { text, mode = "natural" } = req.body;
-      if (!text || typeof text !== "string") {
+      const text = (req.body.text || req.body.script || "").toString();
+      const mode = req.body.mode || "natural";
+      if (!text.trim()) {
         return res.status(400).json({ error: "Văn bản không được để trống" });
       }
 
       const ai = getAIClient();
       if (!ai) {
-        // Return structured fallback if API key is not yet set
         return res.json({
           enhancedText: text,
+          enhancedScript: text,
           message: "Sử dụng kịch bản gốc (Đã sẵn sàng tạo giọng)",
         });
       }
@@ -181,12 +184,12 @@ async function startServer() {
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.6-flash",
         contents: `${instruction}\n\nVăn bản gốc:\n"""${text}"""\n\nChỉ trả về trực tiếp đoạn văn bản tiếng Việt đã được tối ưu hóa, không kèm lời giải thích hay ngoặc kép thừa.`,
       });
 
       const enhancedText = response.text?.trim() || text;
-      return res.json({ enhancedText });
+      return res.json({ enhancedText, enhancedScript: enhancedText });
     } catch (error: any) {
       console.error("Lỗi enhance script:", error);
       return res.status(500).json({ error: error.message || "Lỗi xử lý kịch bản" });
@@ -196,22 +199,24 @@ async function startServer() {
   // API Route: AI Voice Suggester
   app.post("/api/ai/suggest-voice", async (req, res) => {
     try {
-      const { text } = req.body;
-      if (!text || typeof text !== "string") {
+      const text = (req.body.text || req.body.script || "").toString();
+      if (!text.trim()) {
         return res.status(400).json({ error: "Văn bản không hợp lệ" });
       }
 
       const ai = getAIClient();
       if (!ai) {
         return res.json({
-          recommendedVoiceId: "hn_news_female",
+          voiceId: "hn_news_female",
+          suggestedVoiceId: "hn_news_female",
+          genre: "Thời sự / Truyền cảm",
           reason: "Giọng đọc chuẩn truyền cảm",
           suggestedBgm: "podcast_chill",
         });
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.6-flash",
         contents: `Phân tích đoạn văn bản sau và đề xuất phong cách giọng đọc phù hợp nhất trong các nhóm:
 - "hn_news_female" (MC Thời sự Bắc nữ)
 - "hn_news_male" (BTV Thời sự Bắc nam)
@@ -239,7 +244,7 @@ Trả về dạng JSON với schema:
         },
       });
 
-      let parsed = {};
+      let parsed: any = {};
       try {
         parsed = JSON.parse(response.text || "{}");
       } catch {
@@ -253,11 +258,17 @@ Trả về dạng JSON với schema:
         };
       }
 
-      return res.json(parsed);
+      const chosenVoiceId = parsed.voiceId || parsed.suggestedVoiceId || "hn_news_female";
+      return res.json({
+        ...parsed,
+        voiceId: chosenVoiceId,
+        suggestedVoiceId: chosenVoiceId,
+      });
     } catch (error: any) {
       console.error("Lỗi suggest voice:", error);
       return res.json({
         voiceId: "hn_news_female",
+        suggestedVoiceId: "hn_news_female",
         genre: "Chuẩn tiếng Việt",
         suggestedBgm: "chill",
         speed: 1.0,
@@ -299,7 +310,7 @@ Hãy trả về danh sách các câu thoại dạng JSON array. Mỗi item gồm
 Trả về định dạng JSON thuần túy.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
+        model: "gemini-3.6-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
